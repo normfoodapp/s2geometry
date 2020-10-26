@@ -24,14 +24,18 @@
 #include "s2/s2region_term_indexer.h"
 #include "s2/s2testing.h"
 
-class S2Doc {
+class MerchandiseLocation {
 	public:
-		S2Point docPoint;
-		string docId;
+		S2Point location;
+		string businessAddressId;
+		string sellerId;
+		string merchandiseId;
 
-	S2Doc(S2Point _docPoint, string _docId) {
-		docPoint = _docPoint;
-		docId = _docId;
+	MerchandiseLocation(S2Point _location, string _businessAddressId, string _sellerId, string _merchandiseId) {
+		location = _location;
+		businessAddressId = _businessAddressId;
+		sellerId = _sellerId;
+		merchandiseId = _merchandiseId;
 	}
 };
 
@@ -49,18 +53,18 @@ int main(int argc, char **argv) {
   // index a mixture of region types using std::unique_ptr<S2Region>.  Other
   // region types include polygons, polylines, rectangles, discs, buffered
   // geometry, etc.)
-  std::vector<S2Doc> documents;
+  std::vector<MerchandiseLocation> documents;
   //std::vector<S2Point> documents;
   documents.reserve(FLAGS_num_documents);
-  for (int docid = 0; docid < FLAGS_num_documents; ++docid) {
+  for (int docIndex = 0; docIndex < FLAGS_num_documents; ++docIndex) {
     //documents.push_back(S2Testing::RandomPoint());
 	S2Point s2point(S2LatLng::FromDegrees(40.2375772, -111.6777521));
-    documents.push_back(S2Doc(s2point, "firestore_"+std::to_string(docid)));
+    documents.push_back(MerchandiseLocation(s2point, "businessAddressId_"+std::to_string(docIndex), "sellerId_"+std::to_string(docIndex), "merchandiseId_"+std::to_string(docIndex)));
   }
 
   // We use a hash map as our inverted index.  The key is an index term, and
   // the value is the set of "document ids" where this index term is present.
-  std::unordered_map<string, std::vector<int>> index;
+  std::unordered_map<string, std::vector<int>> termToDocsMap;
 
   // Create an indexer suitable for an index that contains points only.
   // (You may also want to adjust min_level() or max_level() if you plan
@@ -70,10 +74,10 @@ int main(int argc, char **argv) {
   S2RegionTermIndexer indexer(options);
 
   // Add the documents to the index.
-  for (int docid = 0; docid < documents.size(); ++docid) {
-    S2Point index_region = documents[docid].docPoint;
+  for (int docIndex = 0; docIndex < documents.size(); ++docIndex) {
+    S2Point index_region = documents[docIndex].location;
     for (const auto& term : indexer.GetIndexTerms(index_region, kPrefix)) {
-      index[term].push_back(docid);
+      termToDocsMap[term].push_back(docIndex);
     }
   }
 
@@ -94,23 +98,23 @@ int main(int argc, char **argv) {
     // retrieval system would do something more sophisticated.)
     std::set<int> candidates;
     for (const auto& term : indexer.GetQueryTerms(query_region, kPrefix)) {
-      candidates.insert(index[term].begin(), index[term].end());
+      candidates.insert(termToDocsMap[term].begin(), termToDocsMap[term].end());
     }
 
     // "candidates" now contains all documents that intersect the query
     // region, along with some documents that nearly intersect it.  We can
     // prune the results by retrieving the original "document" and checking
     // the distance more precisely.
-    std::vector<string> result;
-    for (int docid : candidates) {
-      if (!query_region.Contains(documents[docid].docPoint)) continue;
-      result.push_back(documents[docid].docId);
+    std::vector<int> result;
+    for (int docIndex : candidates) {
+      if (!query_region.Contains(documents[docIndex].location)) continue;
+      result.push_back(docIndex);
     }
     // Now do something with the results (in this example we just count them).
     num_found += result.size();
 
-    for (int resIndex = 0; resIndex < result.size(); ++resIndex) {
-    	std::printf("Found document with id: %s\n", result[resIndex].c_str());
+    for (int docIndex : result) {
+    	std::printf("Found document with document identifiers: %s, %s, %s\n", documents[docIndex].businessAddressId.c_str(), documents[docIndex].sellerId.c_str(), documents[docIndex].merchandiseId.c_str());
     }
   }
   std::printf("Found %" PRId64 " points in %d queries\n",
